@@ -87,8 +87,8 @@ const FilmEffectsTranslator = () => {
     });
   };
 
-  // Use example prompt
-  const useExample = async (example) => {
+  // Handle example selection
+  const handleExampleSelection = async (example) => {
     setActiveTab('translator');
     setBasicPrompt(example.before);
     
@@ -255,7 +255,7 @@ const FilmEffectsTranslator = () => {
             <div className="flex flex-wrap gap-3">
               <button 
                 className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                onClick={handleGeneratePrompt}
+                onClick={() => handleGeneratePrompt()}
                 disabled={!basicPrompt || selectedEffects.length === 0}
               >
                 Generate Enhanced Prompt
@@ -326,7 +326,7 @@ const FilmEffectsTranslator = () => {
                     
                     <button 
                       className="bg-blue-100 text-blue-800 px-3 py-1 rounded hover:bg-blue-200 focus:ring-2 focus:ring-blue-300 focus:ring-offset-2 text-sm float-right"
-                      onClick={() => useExample(example)}
+                      onClick={() => handleExampleSelection(example)}
                     >
                       Use This Example
                     </button>
