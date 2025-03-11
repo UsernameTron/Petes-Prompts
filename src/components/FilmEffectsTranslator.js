@@ -4,8 +4,15 @@ import {
   getCategories, 
   getExamplePrompts, 
   analyzeMentionedEffects,
-  generateEnhancedPrompt
+  generateEnhancedPrompt,
+  getGenerationTypes,
+  getTemplateData,
+  getTemplateExamples,
+  getPromptStructure,
+  getSuggestedEffects
 } from '../api/filmEffectsApi';
+import GenerationTypeSelector from './GenerationTypeSelector';
+import PromptStructurePreview from './PromptStructurePreview';
 
 const FilmEffectsTranslator = () => {
   const [activeTab, setActiveTab] = useState('translator');
@@ -15,6 +22,15 @@ const FilmEffectsTranslator = () => {
   const [selectedEffects, setSelectedEffects] = useState([]);
   const [enhancedPrompt, setEnhancedPrompt] = useState('');
   const [copied, setCopied] = useState(false);
+  
+  // New state for generation types
+  const [generationType, setGenerationType] = useState('text-to-video-basic');
+  const [generationTypes, setGenerationTypes] = useState({});
+  const [templateData, setTemplateData] = useState({});
+  const [templateExamples, setTemplateExamples] = useState({});
+  const [structureInfo, setStructureInfo] = useState({});
+  const [suggestedEffects, setSuggestedEffects] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   
   // State for storing data from API
   const [filmEffects, setFilmEffects] = useState({});
@@ -26,15 +42,33 @@ const FilmEffectsTranslator = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [effectsData, categoriesData, examplesData] = await Promise.all([
+        const [
+          effectsData, 
+          categoriesData, 
+          examplesData,
+          generationTypesData,
+          templateDataResult,
+          templateExamplesResult
+        ] = await Promise.all([
           getFilmEffects(),
           getCategories(),
-          getExamplePrompts()
+          getExamplePrompts(),
+          getGenerationTypes(),
+          getTemplateData(),
+          getTemplateExamples()
         ]);
         
         setFilmEffects(effectsData);
         setCategories(categoriesData);
         setExamplePrompts(examplesData);
+        setGenerationTypes(generationTypesData);
+        setTemplateData(templateDataResult);
+        setTemplateExamples(templateExamplesResult);
+        
+        // Get structure for default generation type
+        const structure = await getPromptStructure(generationType);
+        setStructureInfo(structure);
+        
         setIsLoading(false);
       } catch (error) {
         console.error("Error fetching data:", error);
@@ -48,6 +82,26 @@ const FilmEffectsTranslator = () => {
   // Update effect options when category changes
   const effectOptions = categories[selectedCategory] || [];
 
+  // Handle generation type change
+  const handleGenerationTypeChange = async (type) => {
+    setGenerationType(type);
+    
+    // Update structure info
+    try {
+      const structure = await getPromptStructure(type);
+      setStructureInfo(structure);
+      
+      // Get suggestions based on the new type and current prompt
+      if (basicPrompt) {
+        const suggestions = await getSuggestedEffects(basicPrompt, type);
+        setSuggestedEffects(suggestions);
+        setShowSuggestions(suggestions.length > 0);
+      }
+    } catch (error) {
+      console.error("Error updating structure info:", error);
+    }
+  };
+
   // Handle adding an effect to the selection
   const addEffect = () => {
     if (!selectedEffect) return;
@@ -56,16 +110,41 @@ const FilmEffectsTranslator = () => {
       setSelectedEffects([...selectedEffects, selectedEffect]);
     }
   };
+  
+  // Add a suggested effect
+  const addSuggestedEffect = (effect) => {
+    if (!selectedEffects.includes(effect)) {
+      setSelectedEffects([...selectedEffects, effect]);
+    }
+  };
 
   // Generate enhanced prompt
   const handleGeneratePrompt = async () => {
     if (!basicPrompt || selectedEffects.length === 0) return;
     
     try {
-      const prompt = await generateEnhancedPrompt(basicPrompt, selectedEffects);
+      const prompt = await generateEnhancedPrompt(basicPrompt, selectedEffects, generationType);
       setEnhancedPrompt(prompt);
     } catch (error) {
       console.error("Error generating prompt:", error);
+    }
+  };
+
+  // Handle prompt text change
+  const handlePromptChange = async (text) => {
+    setBasicPrompt(text);
+    
+    // Get suggestions if text is long enough
+    if (text.length > 10) {
+      try {
+        const suggestions = await getSuggestedEffects(text, generationType);
+        setSuggestedEffects(suggestions);
+        setShowSuggestions(suggestions.length > 0);
+      } catch (error) {
+        console.error("Error getting suggestions:", error);
+      }
+    } else {
+      setShowSuggestions(false);
     }
   };
 
@@ -74,6 +153,7 @@ const FilmEffectsTranslator = () => {
     setBasicPrompt('');
     setSelectedEffects([]);
     setEnhancedPrompt('');
+    setShowSuggestions(false);
   };
 
   // Copy to clipboard
@@ -96,9 +176,21 @@ const FilmEffectsTranslator = () => {
       const mentionedEffects = await analyzeMentionedEffects(example.after);
       setSelectedEffects(mentionedEffects);
       setEnhancedPrompt(example.after);
+      
+      // Get suggestions based on the example
+      const suggestions = await getSuggestedEffects(example.before, generationType);
+      setSuggestedEffects(suggestions);
+      setShowSuggestions(suggestions.length > 0);
     } catch (error) {
       console.error("Error analyzing example:", error);
     }
+  };
+  
+  // Handle template example selection
+  const handleTemplateExampleSelection = async (example) => {
+    setBasicPrompt(example.before);
+    setSelectedEffects(example.effects || []);
+    setEnhancedPrompt(example.after);
   };
 
   if (isLoading) {
@@ -115,7 +207,7 @@ const FilmEffectsTranslator = () => {
         <h1 className="text-3xl font-bold text-center mb-6 text-blue-800">Film Effects Translator for Hailuo AI</h1>
         
         {/* Tabs */}
-        <div className="flex border-b mb-6">
+        <div className="flex flex-wrap border-b mb-6">
           <button 
             className={`px-4 py-2 font-medium ${activeTab === 'translator' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500'}`}
             onClick={() => setActiveTab('translator')}
@@ -135,6 +227,12 @@ const FilmEffectsTranslator = () => {
             Example Prompts
           </button>
           <button 
+            className={`px-4 py-2 font-medium ${activeTab === 'templates' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500'}`}
+            onClick={() => setActiveTab('templates')}
+          >
+            Prompt Templates
+          </button>
+          <button 
             className={`px-4 py-2 font-medium ${activeTab === 'about' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500'}`}
             onClick={() => setActiveTab('about')}
           >
@@ -145,7 +243,22 @@ const FilmEffectsTranslator = () => {
         {/* Translator Tab */}
         {activeTab === 'translator' && (
           <div>
-            <p className="text-lg mb-4 text-center">Enter your basic prompt, then add film effects to enhance it</p>
+            <p className="text-lg mb-4 text-center">Enter your basic prompt, select a generation type, then add film effects</p>
+            
+            {/* Generation Type Selector */}
+            <GenerationTypeSelector 
+              generationTypes={generationTypes}
+              selectedType={generationType}
+              onSelectType={handleGenerationTypeChange}
+              templateData={templateData}
+            />
+            
+            {/* Prompt Structure Preview */}
+            <PromptStructurePreview 
+              generationType={generationType}
+              structureInfo={structureInfo}
+              templateExamples={templateExamples}
+            />
             
             {/* Input section */}
             <div className="mb-6">
@@ -154,10 +267,41 @@ const FilmEffectsTranslator = () => {
                 className="w-full p-3 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
                 rows="3"
                 value={basicPrompt}
-                onChange={(e) => setBasicPrompt(e.target.value)}
+                onChange={(e) => handlePromptChange(e.target.value)}
                 placeholder="Enter a simple description of your video (e.g., 'A woman walks through a garden')"
               ></textarea>
             </div>
+            
+            {/* Suggested Effects */}
+            {showSuggestions && suggestedEffects.length > 0 && (
+              <div className="mb-6 p-3 bg-blue-50 rounded-md border border-blue-100">
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="text-sm font-medium text-blue-800">Suggested Effects</h3>
+                  <button
+                    className="text-xs text-blue-600 hover:text-blue-800"
+                    onClick={() => setShowSuggestions(false)}
+                  >
+                    Hide
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {suggestedEffects.map(effect => (
+                    <button
+                      key={effect}
+                      className={`text-xs px-2 py-1 rounded-full ${
+                        selectedEffects.includes(effect)
+                          ? 'bg-green-100 text-green-800 border border-green-200'
+                          : 'bg-blue-100 text-blue-800 border border-blue-200 hover:bg-blue-200'
+                      }`}
+                      onClick={() => addSuggestedEffect(effect)}
+                      disabled={selectedEffects.includes(effect)}
+                    >
+                      {effect} {selectedEffects.includes(effect) && '✓'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             
             {/* Effects selection */}
             <div className="mb-6">
@@ -336,6 +480,70 @@ const FilmEffectsTranslator = () => {
           </div>
         )}
         
+        {/* Templates Tab */}
+        {activeTab === 'templates' && (
+          <div>
+            <p className="text-lg mb-4 text-center">Browse different prompt templates by generation type</p>
+            
+            <div className="space-y-6">
+              {Object.entries(templateExamples).map(([type, examples]) => {
+                if (!examples || examples.length === 0) return null;
+                
+                const typeInfo = templateData[type] || {};
+                const example = examples[0];
+                
+                return (
+                  <div key={type} className="border border-gray-200 rounded-lg overflow-hidden">
+                    <div className="bg-purple-50 p-3 font-medium text-purple-800">
+                      <div className="flex items-center">
+                        <div className={`w-8 h-8 flex items-center justify-center rounded-full ${typeInfo.iconBgColor || 'bg-purple-600'} text-white mr-2`}>
+                          {typeInfo.icon || '🔤'}
+                        </div>
+                        <span>{typeInfo.name || type}</span>
+                      </div>
+                    </div>
+                    <div className="p-4 space-y-4">
+                      <div>
+                        <p className="text-sm font-medium text-gray-700 mb-1">Description:</p>
+                        <p className="text-gray-600">{typeInfo.description || "Template for generation"}</p>
+                      </div>
+                      
+                      <div>
+                        <p className="text-sm font-medium text-gray-700 mb-1">Example:</p>
+                        <div className="space-y-2">
+                          <p className="text-xs text-gray-500">Before:</p>
+                          <p className="bg-gray-50 p-2 rounded border border-gray-200">{example.before}</p>
+                          <p className="text-xs text-gray-500">After:</p>
+                          <p className="bg-gray-50 p-2 rounded border border-gray-200">{example.after}</p>
+                          <p className="text-xs text-gray-500">Effects used:</p>
+                          <div className="flex flex-wrap gap-1">
+                            {example.effects && example.effects.map(effect => (
+                              <span key={effect} className="bg-purple-100 text-purple-800 px-2 py-0.5 text-xs rounded-full">
+                                {effect}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <button 
+                        className="bg-purple-100 text-purple-800 px-3 py-1 rounded hover:bg-purple-200 focus:ring-2 focus:ring-purple-300 focus:ring-offset-2 text-sm float-right"
+                        onClick={() => {
+                          setGenerationType(type);
+                          handleTemplateExampleSelection(example);
+                          setActiveTab('translator');
+                        }}
+                      >
+                        Use This Template
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        
         {/* About Tab */}
         {activeTab === 'about' && (
           <div>
@@ -346,12 +554,21 @@ const FilmEffectsTranslator = () => {
               
               <h3 className="font-bold mt-6 mb-2">HOW TO USE THIS TOOL:</h3>
               <ol className="list-decimal pl-6 space-y-2">
+                <li>Select a generation type that matches your needs (Text-to-Video Basic, Text-to-Video Precise, Image-to-Video, or Subject Reference).</li>
                 <li>Enter your basic prompt (e.g., "A woman walks through a garden").</li>
                 <li>Select a category of film effects, then choose specific effects to add to your prompt.</li>
                 <li>Click "Add Selected Effect to Prompt" for each effect you want to include.</li>
                 <li>Click "Generate Enhanced Prompt" to create your optimized prompt.</li>
                 <li>Copy the enhanced prompt to use with Hailuo AI.</li>
               </ol>
+              
+              <h3 className="font-bold mt-6 mb-2">GENERATION TYPES:</h3>
+              <ul className="list-disc pl-6 space-y-1">
+                <li><strong>Text-to-Video Basic:</strong> Simple video generation from text with basic film effects.</li>
+                <li><strong>Text-to-Video Precise:</strong> Detailed video generation with specific cinematic qualities and effects.</li>
+                <li><strong>Image-to-Video:</strong> Generate videos based on a reference image, defining how it should animate.</li>
+                <li><strong>Subject Reference:</strong> Create videos featuring a specific subject from a reference image in new scenes.</li>
+              </ul>
               
               <h3 className="font-bold mt-6 mb-2">WHY USE FILM EFFECTS:</h3>
               <p>Adding technical film terminology to your prompts helps Hailuo AI understand exactly how you want your video to look. A basic prompt like "A car driving on a highway" will work, but an enhanced prompt with specific film effects will produce much more cinematic and visually appealing results.</p>
