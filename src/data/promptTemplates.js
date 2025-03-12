@@ -1,7 +1,8 @@
 // src/data/promptTemplates.js
 // Template structures and helper functions for film effect prompts
 
-import { FILM_EFFECTS, CATEGORIES } from './filmEffectsData';
+import { CATEGORIES } from './filmEffectsData';
+// FILM_EFFECTS is used indirectly through the analyzeMentionedEffects function in filmEffectsApi.js
 
 // Generation types
 export const GENERATION_TYPES = {

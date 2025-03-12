@@ -77,6 +77,7 @@ const FilmEffectsTranslator = () => {
     };
     
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Update effect options when category changes
