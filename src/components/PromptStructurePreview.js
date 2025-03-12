@@ -5,11 +5,24 @@ const PromptStructurePreview = ({
   structureInfo,
   templateExamples 
 }) => {
-  if (!structureInfo || !generationType || !templateExamples) {
+  // Add safety checks with default values
+  if (!generationType) {
     return null;
   }
   
-  const examples = templateExamples[generationType] || [];
+  // Ensure structureInfo has a default value
+  const structure = structureInfo || {
+    mainSubject: "The main focus of your video (person, object, etc.)",
+    scene: "Where the action takes place",
+    motion: "What happens in the video"
+  };
+  
+  // Make sure we're using the correct variable name throughout the component
+  const structureToUse = structure;
+  
+  // Ensure examples have default values
+  const safeTemplateExamples = templateExamples || {};
+  const examples = safeTemplateExamples[generationType] || [];
   const example = examples.length > 0 ? examples[0] : null;
   
   return (
@@ -21,8 +34,8 @@ const PromptStructurePreview = ({
         <div>
           <h4 className="text-sm font-medium text-gray-700 mb-2">Required Elements:</h4>
           <div className="space-y-2">
-            {Object.entries(structureInfo).map(([element, description]) => {
-              const isRequired = description.includes("Required");
+            {Object.entries(structureToUse).map(([element, description]) => {
+              const isRequired = description && typeof description === 'string' && description.includes("Required");
               return (
                 <div 
                   key={element}
@@ -32,7 +45,7 @@ const PromptStructurePreview = ({
                       : 'bg-blue-50 border border-blue-100'
                   }`}
                 >
-                  <span className="font-medium">{element}:</span> {description}
+                  <span className="font-medium">{element}:</span> {description || 'No description available'}
                 </div>
               );
             })}
